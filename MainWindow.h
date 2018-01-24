@@ -21,7 +21,6 @@ public:
     ~MainWindow();
 
 private:
-    const int PORT=10090;
     Ui::MainWindow *ui;
     QSystemTrayIcon *mSysTrayIcon;
     QClipboard *mClipboard;

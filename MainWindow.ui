@@ -50,6 +50,9 @@
             <height>16777215</height>
            </size>
           </property>
+          <property name="text">
+           <string>10099</string>
+          </property>
          </widget>
         </item>
        </layout>
@@ -79,6 +82,9 @@
             <width>64</width>
             <height>16777215</height>
            </size>
+          </property>
+          <property name="text">
+           <string>10099</string>
           </property>
          </widget>
         </item>

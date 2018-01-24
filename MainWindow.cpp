@@ -10,7 +10,7 @@ MainWindow::MainWindow(QWidget *parent) :
     ui->setupUi(this);
     mSysTrayIcon = new QSystemTrayIcon(this);
     //新建托盘要显示的icon
-    QIcon icon = QIcon(":/icon/application.ico");
+    QIcon icon = QIcon(":/icon/application.png");
     //将icon设到QSystemTrayIcon对象中
     mSysTrayIcon->setIcon(icon);
     connect(mSysTrayIcon, SIGNAL(activated(QSystemTrayIcon::ActivationReason)), this, SLOT(onActivatedSystemTrayIcon(QSystemTrayIcon::ActivationReason)));
@@ -43,24 +43,27 @@ MainWindow::MainWindow(QWidget *parent) :
     }
 
     ui->mLocalAddress->setText(addresses.join(", "));
+    mListenClipborad = true;
 }
 
 void MainWindow::onClipboardDataChanged()
 {
     qDebug() << "onClipboardDataChanged";
+    if (!mListenClipborad){
+        qDebug() << "ListenClipborad is false";
+    }
     ui->mClipboardContent->setText(mClipboard->text());
     QTcpSocket socket(this);
-    QString address = ui->mRemoteAddress->text();
+    QString address = ui->mRemoteAddress->text().trimmed();
     int port = ui->mRemotePort->text().toInt();
-    address = address.trimmed();
 
     if(address.length() == 0) {
-        mStatusLabel->setText("Server address is empty");
+        mStatusLabel->setText("Remote address is empty");
         return;
     }
 
     if(port <= 0 || port >= 65536) {
-        mStatusLabel->setText("Server address is empty");
+        mStatusLabel->setText("Remote port is invalid");
         return;
     }
 
@@ -96,16 +99,17 @@ void MainWindow::onClipboardDataChanged()
         while(socket.waitForBytesWritten(3000)) {
             qDebug() << "send ...";
         }
+        mStatusLabel->setText("Send data succeed");
     } else {
         mStatusLabel->setText("Connect server failed");
     }
 
     socket.close();
-    mStatusLabel->setText("Send data succeed");
 }
 
 void MainWindow::onSocketAcceptConnection()
 {
+    disconnect(mClipboard, 0, 0, 0);
     QTcpSocket* socket = mQTcpServer->nextPendingConnection();
 
     if(socket->waitForReadyRead(3000)) {
@@ -115,6 +119,7 @@ void MainWindow::onSocketAcceptConnection()
         QDataStream in(socket);
         int count;
         in >> count;
+        in.readRawData()
         qDebug() << "receive clipboard item count: " << count;
 
         QByteArray buffer;
@@ -129,7 +134,10 @@ void MainWindow::onSocketAcceptConnection()
             buffer.clear();
             in >> buffer;
             qDebug() << "receive clipboard item[" << count << "/" << i << "].data.length =" << buffer.size();
+            mListenClipborad = false;
             data->setData(format, buffer);
+            QThread::sleep(1000);
+            mListenClipborad=true;
         }
 
         mStatusLabel->setText("Read remote data succeed");
@@ -140,6 +148,7 @@ void MainWindow::onSocketAcceptConnection()
 
     socket->close();
     delete socket;
+    connect(mClipboard, SIGNAL(dataChanged()), this, SLOT(onClipboardDataChanged()));
 }
 
 MainWindow::~MainWindow()
@@ -176,7 +185,7 @@ void MainWindow::on_mSwitchButton_clicked()
 
         mQTcpServer = new QTcpServer(this);
 
-        if(!mQTcpServer->listen(QHostAddress::Any, 12345)) {
+        if(!mQTcpServer->listen(QHostAddress::Any, port)) {
             mStatusLabel->setText("Create server failed");
             mQTcpServer->close();
             delete mQTcpServer;

@@ -7,7 +7,7 @@
 #include <QClipboard>
 #include <QLabel>
 #include <QTcpServer>
-
+#include <QTextStream>
 namespace Ui {
 class MainWindow;
 }
@@ -27,6 +27,9 @@ private:
     QLabel* mStatusLabel = NULL;
     QLabel* mServerStatusLabel = NULL;
     QTcpServer* mQTcpServer = NULL;
+    QTextStream* mOut;
+    QStringList mSupportedTextMimeTypes;
+    QStringList mSupportedImageMimeTypes;
 
 private slots:
     void onClipboardDataChanged();

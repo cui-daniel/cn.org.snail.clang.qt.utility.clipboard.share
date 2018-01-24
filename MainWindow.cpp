@@ -1,12 +1,25 @@
 #include "MainWindow.h"
 #include "ui_MainWindow.h"
-#include <QDebug>
 #include <QtNetwork>
 #include <QMessageBox>
+
+#define qDebug() (*mOut)
+
 MainWindow::MainWindow(QWidget *parent) :
     QMainWindow(parent),
     ui(new Ui::MainWindow)
 {
+    mOut=new QTextStream(stdout);
+    qDebug()<<"1"<<endl;
+
+    mSupportedTextMimeTypes.append("text/plain");
+    mSupportedTextMimeTypes.append("text/html");
+    mSupportedTextMimeTypes.append("text/uri-list");
+
+    mSupportedImageMimeTypes.append("image/bmp");
+    mSupportedImageMimeTypes.append("image/png");
+    mSupportedImageMimeTypes.append("image/jpeg");
+
     ui->setupUi(this);
     mSysTrayIcon = new QSystemTrayIcon(this);
     //新建托盘要显示的icon
@@ -43,15 +56,11 @@ MainWindow::MainWindow(QWidget *parent) :
     }
 
     ui->mLocalAddress->setText(addresses.join(", "));
-    mListenClipborad = true;
 }
 
 void MainWindow::onClipboardDataChanged()
 {
-    qDebug() << "onClipboardDataChanged";
-    if (!mListenClipborad){
-        qDebug() << "ListenClipborad is false";
-    }
+    qDebug() << "onClipboardDataChanged"<<endl;;
     ui->mClipboardContent->setText(mClipboard->text());
     QTcpSocket socket(this);
     QString address = ui->mRemoteAddress->text().trimmed();
@@ -66,88 +75,123 @@ void MainWindow::onClipboardDataChanged()
         mStatusLabel->setText("Remote port is invalid");
         return;
     }
-
-    socket.connectToHost(QHostAddress(address), port);
-
-    if(socket.waitForConnected(3000)) {
+    QByteArray bytes;
+    {
         const QMimeData* data = mClipboard->mimeData();
-        QStringList formats = data->formats();
-        QDataStream out(&socket);
-
+        QStringList formats;
+        QDataStream out(&bytes,QIODevice::WriteOnly);
+        foreach(QString format, mSupportedTextMimeTypes) {
+            if(data->hasFormat(format)){
+                formats.append(format);
+            }
+        }
+        foreach(QString format, mSupportedImageMimeTypes) {
+            if(data->hasFormat(format)){
+                formats.append(format);
+                break;
+            }
+        }
         int i = 0;
         int count = formats.size();
-        qDebug() << "send clipboard item count: " << count;
+
+        qDebug() << "send clipboard item count: " << count<<endl;;
         out << count;
 
-        foreach(QString format, data->formats()) {
+        foreach(QString format, formats) {
             {
                 QByteArray buffer = format.toUtf8();
-                qDebug() << "send clipboard item[" << count << "/" << i << "].format.length =" << buffer.size();
-                qDebug() << "send clipboard item[" << count << "/" << i << "].format.data =" << format;
+                qDebug() << "send clipboard item[" << count << "/" << i << "].format.length =" << buffer.size()<<endl;;
+                qDebug() << "send clipboard item[" << count << "/" << i << "].format.data =" << format<<endl;;
                 out << buffer;
             }
             {
                 QByteArray buffer = data->data(format);
-                qDebug() << "send clipboard item[" << count << "/" << i << "].data.length =" << buffer.size();
+                qDebug() << "send clipboard item[" << count << "/" << i << "].data.length =" << buffer.size()<<endl;;
                 out << buffer;
             }
             i++;
         }
+    }
 
-        socket.flush();
+    socket.connectToHost(QHostAddress(address), port);
 
-        while(socket.waitForBytesWritten(3000)) {
-            qDebug() << "send ...";
+    if(socket.waitForConnected(3000)) {
+        int count=bytes.size();
+
+        char* raw=bytes.data();
+        while (count>0) {
+            int length=socket.write(raw,count);
+            qDebug()<<length<<endl;
+            if(length==-1){
+                break;
+            }else if(length<count){
+                socket.waitForBytesWritten(3000);
+            }
+            count-=length;
+            if(!socket.waitForBytesWritten(3000)){
+                qDebug()<<"write..."<<endl;
+            }
         }
+        socket.waitForDisconnected(10000);
+        socket.flush();
         mStatusLabel->setText("Send data succeed");
     } else {
         mStatusLabel->setText("Connect server failed");
     }
-
     socket.close();
 }
 
+void writeLength(QTcpSocket* socket,int value){
+    char buffer[4];
+    buffer[0]=(char)((value>>24)&0xff);
+    buffer[1]=(char)((value>>16)&0xff);
+    buffer[2]=(char)((value>>8)&0xff);
+    buffer[3]=(char)((value>>0)&0xff);
+    socket->write(&buffer);
+}
+int readLength(QTcpSocket* socket){
+    char buffer[4]={0,0,0,0};
+    if(socket->read(&buffer,4)!=4){
+        return -1;
+    }
+    int result=0;
+    result|=(buffer[0]&0xff)<<24;
+    result|=(buffer[0]&0xff)<<16;
+    result|=(buffer[0]&0xff)<<8;
+    result|=(buffer[0]&0xff)<<0;
+    return result;
+}
 void MainWindow::onSocketAcceptConnection()
 {
     disconnect(mClipboard, 0, 0, 0);
+    QMimeData* data = new QMimeData();
     QTcpSocket* socket = mQTcpServer->nextPendingConnection();
-
-    if(socket->waitForReadyRead(3000)) {
-        mStatusLabel->setText("Read remote data ...");
-        qDebug() << "onSocketAcceptConnection";
-        QMimeData* data = new QMimeData();
-        QDataStream in(socket);
-        int count;
-        in >> count;
-        in.readRawData()
-        qDebug() << "receive clipboard item count: " << count;
-
-        QByteArray buffer;
-
-        for(int i = 0; i < count; i++) {
-            socket->waitForReadyRead(3000);
-            buffer.clear();
-            in >> buffer;
-            qDebug() << "receive clipboard item[" << count << "/" << i << "].format.length =" << buffer.size();
-            QString format = QString(buffer);
-            qDebug() << "receive clipboard item[" << count << "/" << i << "].format.data =" << format;
-            buffer.clear();
-            in >> buffer;
-            qDebug() << "receive clipboard item[" << count << "/" << i << "].data.length =" << buffer.size();
-            mListenClipborad = false;
-            data->setData(format, buffer);
-            QThread::sleep(1000);
-            mListenClipborad=true;
+    QByteArray bytes;
+    while(socket->state()==QTcpSocket::SocketState::ConnectedState){
+        if(!socket->waitForReadyRead(3000)){
+            continue;
         }
-
-        mStatusLabel->setText("Read remote data succeed");
-        mClipboard->setMimeData(data);
-    } else {
-        mStatusLabel->setText("Read remote data failed");
+        bytes.append(socket->readAll());
     }
-
     socket->close();
-    delete socket;
+    qDebug() << "receive clipboard item length: " << bytes.size()<<endl;;
+    QDataStream in(&bytes,QIODevice::ReadOnly);
+    QByteArray buffer;
+    int count;
+    in >> count;
+    qDebug() << "receive clipboard item count: " << count<<endl;;
+    for(int i = 0; i < count; i++) {
+        buffer.clear();
+        in >> buffer;
+        qDebug() << "receive clipboard item[" << count << "/" << i << "].format.length =" << buffer.size()<<endl;;
+        QString format = QString(buffer);
+        qDebug() << "receive clipboard item[" << count << "/" << i << "].format.data =" << format<<endl;;
+        buffer.clear();
+        in >> buffer;
+        qDebug() << "receive clipboard item[" << count << "/" << i << "].data.length =" << buffer.size()<<endl;;
+        data->setData(format, buffer);
+    }
+    mClipboard->setMimeData(data);
     connect(mClipboard, SIGNAL(dataChanged()), this, SLOT(onClipboardDataChanged()));
 }
 
@@ -159,17 +203,17 @@ MainWindow::~MainWindow()
 void MainWindow::onActivatedSystemTrayIcon(QSystemTrayIcon::ActivationReason reason)
 {
     switch(reason) {
-        case QSystemTrayIcon::Trigger:
-            if(this->isHidden()) {
-                this->show();
-            } else {
-                this->hide();
-            }
+    case QSystemTrayIcon::Trigger:
+        if(this->isHidden()) {
+            this->show();
+        } else {
+            this->hide();
+        }
 
-            break;
+        break;
 
-        default:
-            break;
+    default:
+        break;
     }
 }
 

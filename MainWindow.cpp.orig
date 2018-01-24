@@ -1,0 +1,116 @@
+#include "MainWindow.h"
+#include "ui_MainWindow.h"
+#include <QDebug>
+#include <QtNetwork>
+#include <QMessageBox>
+MainWindow::MainWindow(QWidget *parent) :
+    QMainWindow(parent),
+    ui(new Ui::MainWindow)
+{
+    ui->setupUi(this);
+    mSysTrayIcon = new QSystemTrayIcon(this);
+    //新建托盘要显示的icon
+    QIcon icon = QIcon(":/icon/application.ico");
+    //将icon设到QSystemTrayIcon对象中
+    mSysTrayIcon->setIcon(icon);
+    connect(mSysTrayIcon,SIGNAL(activated(QSystemTrayIcon::ActivationReason)), this, SLOT(onActivatedSystemTrayIcon(QSystemTrayIcon::ActivationReason)));
+
+    //在系统托盘显示此对象
+    mSysTrayIcon->show();
+
+    mClipboard = QApplication::clipboard(); //获取系统剪贴板指针
+
+    mTimer= new QTimer(this);
+    connect(mTimer, SIGNAL(timeout()), this, SLOT(onTimeout()));
+    mTimer->start(1000);
+
+    mStatusLabel = new QLabel();
+    mStatusLabel->setMinimumSize(mStatusLabel->sizeHint());
+    mStatusLabel->setAlignment(Qt::AlignHCenter);
+    ui->mStatusBar->addWidget(mStatusLabel);
+    mErrorLabel = new QLabel();
+    mErrorLabel->setMinimumSize(mErrorLabel->sizeHint());
+    mErrorLabel->setAlignment(Qt::AlignHCenter);
+    ui->mStatusBar->addWidget(mErrorLabel);
+    mStatusLabel->setText("Ready");
+
+    mQTcpServer=new QTcpServer(this);
+    if(!mQTcpServer->listen(QHostAddress::Any,12345))
+    {
+        mStatusLabel->setText("Create server failed");
+        mQTcpServer->close();
+        QMessageBox::information(NULL, "Error", "Create server failed", QMessageBox::Ok, QMessageBox::Ok);
+    }
+
+    //newConnection()用于当有客户端访问时发出信号，acceptConnection()信号处理函数
+    connect(mQTcpServer,SIGNAL(newConnection()),this,SLOT(onSocketAcceptConnection()));
+}
+
+void MainWindow::onSocketAcceptConnection()
+{
+    QTcpSocket* socket=mQTcpServer->nextPendingConnection();
+    if(socket->waitForReadyRead(1000))
+    {
+        QString text=QString(socket->readAll());
+        mClipboard->setText(text);
+    }
+    socket->close();
+    delete socket;
+}
+
+MainWindow::~MainWindow()
+{
+    delete ui;
+    mTimer->stop();
+}
+
+void MainWindow::onTimeout()
+{
+    QString text=mClipboard->text();
+    if(mLastClipboardText !=NULL&&(*mLastClipboardText)==text)
+    {
+        return;
+    }
+    mLastClipboardText=new QString(text);
+    ui->mClipboardContent->setText(text);
+    QTcpSocket *client;
+    client = new QTcpSocket(this);
+    QString address=ui->mServerAddress->text();
+    address=address.trimmed();
+    if(address.length()==0)
+    {
+        mStatusLabel->setText("Server address is empty");
+    }
+    client->connectToHost(QHostAddress(address), 12345);
+    if(!client->waitForConnected(1000))
+    {
+        ui->mClipboardContent->setText("connect timeout");
+    }
+    else
+    {
+        client->write(text.toUtf8());
+        client->flush();
+    }
+    client->close();
+    mStatusLabel->setText("send succeed");
+    delete client;
+}
+
+void MainWindow::onActivatedSystemTrayIcon(QSystemTrayIcon::ActivationReason reason)
+{
+    switch(reason)
+    {
+    case QSystemTrayIcon::Trigger:
+        if(this->isHidden())
+        {
+            this->show();
+        }
+        else
+        {
+            this->hide();
+        }
+        break;
+    default:
+        break;
+    }
+}

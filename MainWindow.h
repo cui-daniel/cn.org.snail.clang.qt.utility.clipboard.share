@@ -20,23 +20,27 @@ class MainWindow : public QMainWindow
     Q_OBJECT
 
 public:
-    explicit MainWindow(QWidget *parent = 0);
+    explicit MainWindow(QWidget *parent = nullptr);
     ~MainWindow();
 
 private:
+    uint mUpdateTime;
     Ui::MainWindow *ui;
     QSystemTrayIcon *mSysTrayIcon;
     QClipboard *mClipboard;
-    QLabel* mStatusOperationLabel = NULL;
-    QLabel* mServerStatusLabel = NULL;
-    QTcpServer* mQTcpServer = NULL;
+    QLabel* mStatusOperationLabel = nullptr;
+    QLabel* mServerStatusLabel = nullptr;
+    QTcpServer* mQTcpServer = nullptr;
     QStringList mLogs;
 
     void log(QString log);
 
 
 private slots:
+    int write(QTcpSocket* socket,QByteArray* bytes);
+    int read(QTcpSocket* socket, QByteArray* bytes);
     void onClipboardDataChanged();
+    void onClipboardModeChanged(QClipboard::Mode);
     void onActivatedSystemTrayIcon(QSystemTrayIcon::ActivationReason);
     void onSocketAcceptConnection();
     void on_mSwitchButton_clicked();

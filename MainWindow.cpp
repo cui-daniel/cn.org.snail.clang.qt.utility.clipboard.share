@@ -1,149 +1,104 @@
 #include "MainWindow.h"
 #include "ui_MainWindow.h"
+#include <QDebug>
+#define CHAR(X) static_cast<char>(X)
+#define INT(X) static_cast<int>(X)
+#define USHORT(X) static_cast<ushort>(X)
 
-int write(QTcpSocket* socket, char* buffer, int length)
-{
-    int count = 0;
+int MainWindow::write(QTcpSocket* socket,QByteArray* bytes){
+    long long count = 0;
     int sum = 0;
-    int error = 0;
-
-    while(length > 0) {
-        QTcpSocket::SocketState state = socket->state();
-
-        if(state != QTcpSocket::ConnectedState) {
+    int length=bytes->size();
+    int timeout=0;
+    char* data=bytes->data();
+    char size[4];
+    size[0]=CHAR((length>>24)&0xff);
+    size[1]=CHAR((length>>16)&0xff);
+    size[2]=CHAR((length>>8)&0xff);
+    size[3]=CHAR((length>>0)&0xff);
+    socket->write(size,4);
+    char str[1024];
+    sprintf(str,"write size: %d  %02x %02x %02x %02x",length, INT(size[0]&0xff),INT(size[0]&0xff),INT(size[0]&0xff),INT(size[0]&0xff));
+    qDebug()<<QString(str);
+    while(length>0) {
+        if(socket->state() != QTcpSocket::ConnectedState) {
+            qDebug()<<"socket status not is connected";
             return -1;
         }
-
-        count = socket->write(buffer, length);
-
+        if(timeout>5){
+             qDebug()<<"socket write timeout";
+             return -1;
+        }
+        count = socket->write(data, length);
+        qDebug()<<"socket write data count: "<<length<<"/"<<count;
         if(count < 0) {
-            return sum;
+            qDebug()<<"socket write failure ";
+            break;
         } else if(count == 0) {
             socket->waitForBytesWritten(1000);
-            error++;
-
-            if(error > 3) {
-                return sum;
-            } else {
-                continue;
-            }
-        } else {
-            error = 0;
-            sum += count;
-            length -= count;
-            buffer += count;
-        }
-
-        socket->flush();
-    }
-
-    return sum;
-}
-int write(QTcpSocket* socket, QByteArray* bytes)
-{
-    int length = bytes->size();
-    char buffer[4];
-    buffer[0] = (char)((length >> 24) & 0xff);
-    buffer[1] = (char)((length >> 16) & 0xff);
-    buffer[2] = (char)((length >> 8) & 0xff);
-    buffer[3] = (char)((length >> 0) & 0xff);
-    length = write(socket, buffer, 4);
-
-    if(length != 4) {
-        return -1;
-    }
-
-    length = bytes->size();
-
-    if(write(socket, bytes->data(), length) != length) {
-        return -2;
-    }
-
-    return length;
-}
-
-
-
-int read(QTcpSocket* socket, char* buffer, int length)
-{
-    int count = 0;
-    int sum = 0;
-    int error = 0;
-
-    while(length > 0) {
-        QTcpSocket::SocketState state = socket->state();
-
-        if(state != QTcpSocket::ConnectedState) {
-            return -1;
-        }
-
-        int available = socket->bytesAvailable();
-
-        if(available == 0) {
-            socket->waitForReadyRead(1000);
-            error++;
-
-            if(error > 3) {
-                return sum;
-            } else {
-                continue;
-            }
-        }
-
-        if(available > length) {
-            available = length;
-        }
-
-        count = socket->read(buffer, available);
-
-        if(count < 0) {
-            return sum;
-        } else if(count == 0) {
+            timeout++;
             continue;
         } else {
-            error = 0;
-            sum += count;
-            length -= count;
-            buffer += count;
+           data+=count;
+           sum+=count;
+           length-=count;
+           socket->flush();
         }
     }
-
+    qDebug()<<"socket write success ";
     return sum;
 }
 
-int read(QTcpSocket* socket, QByteArray* bytes)
-{
-    bytes->resize(4);
-    char* buffer = bytes->data();
-    int length = read(socket, buffer, 4);
+int MainWindow::read(QTcpSocket* socket, QByteArray* bytes){
+   char buffer[4096];
+   bytes->clear();
+   socket->waitForReadyRead(1000);
+   char size[4];
+   socket->read(size,4);
+   int length=0;
+   int timeout=0;
+   length|=(size[0]&0xff)<<24;
+   length|=(size[1]&0xff)<<16;
+   length|=(size[2]&0xff)<<8;
+   length|=(size[3]&0xff)<<0;
+   char str[1024];
+   sprintf(str,"read size: %d  %02x %02x %02x %02x",length, INT(size[0]&0xff),INT(size[0]&0xff),INT(size[0]&0xff),INT(size[0]&0xff));
+   qDebug()<<QString(str);
+   while(length>0) {
+       if(socket->state() != QTcpSocket::ConnectedState) {
+            qDebug()<<"socket status not is connected";
+         return -1;
+       }
+       if(timeout>5){
+          qDebug()<<"socket read timeout";
+           return -1;
+       }
+       long long count = socket->bytesAvailable();
 
-    if(length != 4) {
-        return -1;
-    }
+       if(count == 0) {
+           socket->waitForReadyRead(1000);
+       }
 
-    length = 0;
-    length |= (buffer[0] & 0xff) << 24;
-    length |= (buffer[1] & 0xff) << 16;
-    length |= (buffer[2] & 0xff) << 8;
-    length |= (buffer[3] & 0xff) << 0;
+       if(count > 4096) {
+           count = 4096;
+       }
 
-    if(length < 0) {
-        return -2;
-    } else if(length == 0) {
-        bytes->resize(0);
-        return 0;
-    } else if(length > 32 * 1024 * 1024) {
-        return -3;
-    }
-
-    bytes->resize(length);
-    buffer = bytes->data();
-
-    if(read(socket, buffer, length) != length) {
-        return -4;
-    }
-
-    return length;
+       count = socket->read(buffer, count);
+       qDebug()<<"socket read data count: "<<length<<"/"<<count;
+       if(count < 0) {
+           qDebug()<<"socket read failure ";
+          return -1;
+       } else if(count == 0) {
+           timeout++;
+           continue;
+       } else {
+           timeout=0;
+           length-=count;
+           bytes->append(buffer,INT(count));
+       }
+   }
+    qDebug()<<"socket read success ";
+    return bytes->size();
 }
 
 MainWindow::MainWindow(QWidget *parent) :
@@ -163,6 +118,7 @@ MainWindow::MainWindow(QWidget *parent) :
 
     mClipboard = QApplication::clipboard(); //获取系统剪贴板指针
     connect(mClipboard, SIGNAL(dataChanged()), this, SLOT(onClipboardDataChanged()));
+    //connect(mClipboard, SIGNAL(changed(QClipboard::Mode)), this, SLOT(onClipboardModeChanged(QClipboard::Mode)));
 
     mStatusOperationLabel = new QLabel();
     mStatusOperationLabel->setMinimumSize(mStatusOperationLabel->sizeHint());
@@ -175,6 +131,8 @@ MainWindow::MainWindow(QWidget *parent) :
     mStatusOperationLabel->setText("Ready");
     mServerStatusLabel->setText("Server is stopped");
     ui->mClipboardImage->setAlignment(Qt::AlignCenter);
+    ui->mClipboardImage->setSizePolicy(QSizePolicy::Ignored,QSizePolicy::Ignored);
+    ui->mClipboardImage->setScaledContents(true);
 
 
     QStringList addresses;
@@ -190,66 +148,72 @@ MainWindow::MainWindow(QWidget *parent) :
 
 void MainWindow::log(QString log)
 {
+    qDebug()<<log;
     mLogs.append(log);
     ui->mClipboardLog->setText(mLogs.join("\n"));
 }
-
+void MainWindow::onClipboardModeChanged(QClipboard::Mode mode){
+    log(QString("onClipboardModeChanged(%1)").arg(mode));
+}
 void MainWindow::onClipboardDataChanged()
 {
-    log(QString("onClipboardDataChanged"));
+    uint now = QDateTime::currentDateTime().toTime_t();
+    log(QString("Clipboard last update time:%1 at %2").arg(mUpdateTime).arg(now));
+    if(mUpdateTime>now){
+       mUpdateTime=now;
+    }
+    if(now-mUpdateTime<=5){
+        log(QString("Ignore clipboard data change event"));
+        return;
+    }
+
     QString address = ui->mRemoteAddress->text().trimmed();
     int port = ui->mRemotePort->text().toInt();
 
     if(address.length() == 0) {
-        mStatusOperationLabel->setText("Remote address is empty");
+        log(QString("Remote address is empty"));
         return;
     }
 
     if(port <= 0 || port >= 65536) {
-        mStatusOperationLabel->setText("Remote port is invalid");
+        log(QString("Remote port is invalid"));
         return;
     }
-
 
     QByteArray bytes;
-    QDataStream out(&bytes, QIODevice::WriteOnly);
     const QMimeData* data = mClipboard->mimeData();
-
     if(data->hasText()) {
         log(QString("send text"));
-        QString text = mClipboard->text();
-        QString format("text");
-        QByteArray buffer = text.toUtf8();
-        out << format.toUtf8();
-        out << buffer;
-        log(QString("text length: %1").arg(buffer.size()));
-        ui->mClipboardText->setText(mClipboard->text());
+        bytes.append('t');
+        bytes.append(data->text().toUtf8());
+        ui->mClipboardText->setText(data->text());
     } else if(data->hasImage()) {
         log(QString("send image"));
-        QImage image = mClipboard->image();
-        QBuffer buffer;
-        image.save(&buffer, "bmp");
-        QString format("image");
-        out << format.toUtf8();
-        out << buffer.data();
-        log(QString("image length: %1").arg(buffer.size()));
-        log(QString("image width: %1").arg(image.width()));
-        log(QString("image height: %1").arg(image.height()));
-        ui->mClipboardImage->setPixmap(mClipboard->pixmap());
-    } else {
-        mStatusOperationLabel->setText("Clipboard is empty");
+        QPixmap image= qvariant_cast<QPixmap>(data->imageData());
+        QByteArray array;
+        QBuffer buffer(&array);
+        buffer.open(QIODevice::WriteOnly);
+        image.save(&buffer,"jpg",100);
+        bytes.append('i');
+        bytes.append(array);
+        ui->mClipboardImage->setPixmap(image);
+        ui->mClipboardImage->resize(image.size());
+        ui->mScrollArea->widget()->resize(image.size());
+    }else{
         return;
     }
 
+    qDebug()<<"write socket open";
     QTcpSocket socket(this);
-    socket.connectToHost(QHostAddress(address), port);
-
-    if(socket.waitForConnected(3000) && write(&socket, &bytes) > 0 && socket.waitForDisconnected(3000)) {
-        mStatusOperationLabel->setText("Send data succeed");
+    socket.connectToHost(QHostAddress(address),USHORT(port));
+    socket.waitForConnected(3000);
+    if(write(&socket, &bytes) >0) {
+        socket.waitForDisconnected();
+        log(QString("Sent data:%1 succeed").arg(bytes.size()));
     } else {
-        mStatusOperationLabel->setText("Send data failed");
+        log(QString("Sent data:%1 failed").arg(bytes.size()));
     }
-
+    qDebug()<<"write socket close";
     socket.close();
 }
 
@@ -257,47 +221,39 @@ void MainWindow::onClipboardDataChanged()
 
 void MainWindow::onSocketAcceptConnection()
 {
-    disconnect(mClipboard, 0, 0, 0);
+    qDebug()<<"read socket open";
     QTcpSocket* socket = mQTcpServer->nextPendingConnection();
     QByteArray bytes;
 
     if(read(socket, &bytes) > 0) {
-        QDataStream in(&bytes, QIODevice::ReadOnly);
-        QByteArray buffer;
-        buffer.clear();
-        in >> buffer;
-        QString format = QString(buffer);
-        buffer.clear();
-
-        if(format == "text") {
+        disconnect(mClipboard,nullptr,nullptr,nullptr);
+        log(QString("Received data size:%1").arg(bytes.size()));
+        if(bytes.at(0)=='t'){
             log(QString("receive text"));
-            in >> buffer;
-            log(QString("text length: %1").arg(buffer.size()));
-            QString text = QString(buffer);
-            mClipboard->setText(text);
+            bytes.remove(0,1);
+            QString text(bytes);
             ui->mClipboardText->setText(text);
-        } else if(format == "image") {
+            mClipboard->setText(text);
+        }else  if(bytes.at(0)=='i'){
             log(QString("receive image"));
-            in >> buffer;
-            log(QString("image length: %1").arg(buffer.size()));
-            QImage image;
-            image.loadFromData(buffer, Q_NULLPTR);
-            log(QString("image width: %1").arg(image.width()));
-            log(QString("image height: %1").arg(image.height()));
-            mClipboard->setImage(image);
-            ui->mClipboardImage->setPixmap(mClipboard->pixmap());
-        } else {
-            log(QString("unsupported type: %1").arg(format));
+            QPixmap pixmap;
+            bytes.remove(0,1);
+            pixmap.loadFromData(bytes,"jpg");
+            ui->mClipboardImage->setPixmap(pixmap);
+            ui->mClipboardImage->resize(pixmap.size());
+            ui->mScrollArea->widget()->resize(pixmap.size());
+            mClipboard->setPixmap(pixmap);
         }
-
+        connect(mClipboard, SIGNAL(dataChanged()), this, SLOT(onClipboardDataChanged()));
+        mUpdateTime = QDateTime::currentDateTime().toTime_t();
+        log(QString("Clipboard update at %1").arg(mUpdateTime));
         mStatusOperationLabel->setText("Receive data succeed");
     } else {
         mStatusOperationLabel->setText("Receive data failed");
     }
-
+    qDebug()<<"read socket close";
     socket->close();
     delete socket;
-    connect(mClipboard, SIGNAL(dataChanged()), this, SLOT(onClipboardDataChanged()));
 }
 
 MainWindow::~MainWindow()
@@ -333,22 +289,22 @@ void MainWindow::closeEvent(QCloseEvent *event)
 
 void MainWindow::on_mSwitchButton_clicked()
 {
-    if(mQTcpServer == NULL) {
+    if(mQTcpServer == nullptr) {
         int port = ui->mLocalPort->text().toInt();
 
         if(port <= 0 || port >= 35536) {
-            QMessageBox::information(NULL, "Error", "Local port is invalid", QMessageBox::Ok, QMessageBox::Ok);
+            QMessageBox::information(nullptr, "Error", "Local port is invalid", QMessageBox::Ok, QMessageBox::Ok);
             return;
         }
 
         mQTcpServer = new QTcpServer(this);
 
-        if(!mQTcpServer->listen(QHostAddress::Any, port)) {
+        if(!mQTcpServer->listen(QHostAddress::Any, USHORT(port))) {
             mStatusOperationLabel->setText("Create server failed");
             mQTcpServer->close();
             delete mQTcpServer;
-            mQTcpServer = NULL;
-            QMessageBox::information(NULL, "Error", "Create server failed", QMessageBox::Ok, QMessageBox::Ok);
+            mQTcpServer = nullptr;
+            QMessageBox::information(nullptr, "Error", "Create server failed", QMessageBox::Ok, QMessageBox::Ok);
             return;
         }
 
@@ -356,13 +312,17 @@ void MainWindow::on_mSwitchButton_clicked()
         connect(mQTcpServer, SIGNAL(newConnection()), this, SLOT(onSocketAcceptConnection()));
         ui->mSwitchButton->setText("Stop");
         ui->mLocalPort->setReadOnly(true);
+        ui->mRemoteAddress->setReadOnly(true);
+        ui->mRemotePort->setReadOnly(true);
         mServerStatusLabel->setText("Server is running");
     } else {
-        disconnect(mQTcpServer, 0, 0, 0) ;
+        disconnect(mQTcpServer, nullptr, nullptr, nullptr) ;
         mQTcpServer->close();
         delete mQTcpServer;
-        mQTcpServer = NULL;
+        mQTcpServer = nullptr;
         ui->mLocalPort->setReadOnly(false);
+        ui->mRemoteAddress->setReadOnly(false);
+        ui->mRemotePort->setReadOnly(false);
         ui->mSwitchButton->setText("Start");
         mServerStatusLabel->setText("Server is stopped");
     }

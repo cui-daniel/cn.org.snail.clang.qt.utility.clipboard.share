@@ -111,10 +111,33 @@
          </attribute>
          <layout class="QHBoxLayout" name="horizontalLayout_4">
           <item>
-           <widget class="QLabel" name="mClipboardImage">
-            <property name="text">
-             <string/>
+           <widget class="QScrollArea" name="mScrollArea">
+            <property name="widgetResizable">
+             <bool>false</bool>
             </property>
+            <widget class="QWidget" name="scrollAreaWidgetContents">
+             <property name="geometry">
+              <rect>
+               <x>0</x>
+               <y>0</y>
+               <width>442</width>
+               <height>397</height>
+              </rect>
+             </property>
+             <widget class="QLabel" name="mClipboardImage">
+              <property name="geometry">
+               <rect>
+                <x>0</x>
+                <y>0</y>
+                <width>54</width>
+                <height>15</height>
+               </rect>
+              </property>
+              <property name="text">
+               <string/>
+              </property>
+             </widget>
+            </widget>
            </widget>
           </item>
          </layout>

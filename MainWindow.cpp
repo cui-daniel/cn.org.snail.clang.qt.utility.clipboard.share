@@ -175,6 +175,12 @@ MainWindow::MainWindow(QWidget *parent)    : QMainWindow(parent), ui(new Ui::Mai
 void MainWindow::log(QString log) {
     qDebug() << log;
     mLogs.append(log);
+
+    if (ui->mAutoClear->isChecked()) {
+        while (mLogs.size() > 256) {
+            mLogs.removeFirst();
+        }
+    }
     ui->mClipboardLog->setText(mLogs.join("\n"));
 }
 
@@ -387,4 +393,14 @@ void MainWindow::on_mSwitchButton_clicked() {
 void MainWindow::on_mLogClear_clicked() {
     mLogs.clear();
     ui->mClipboardLog->clear();
+}
+
+void MainWindow::on_mClipboardLog_textChanged()
+{
+    ui->mClipboardLog->moveCursor(QTextCursor::End);
+}
+
+void MainWindow::on_mAutoClear_stateChanged(int state)
+{
+    ui->mLogClear->setEnabled(state != Qt::Checked);
 }

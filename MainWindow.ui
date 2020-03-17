@@ -166,6 +166,13 @@
              </spacer>
             </item>
             <item>
+             <widget class="QCheckBox" name="mAutoClear">
+              <property name="text">
+               <string>Auto Clear</string>
+              </property>
+             </widget>
+            </item>
+            <item>
              <widget class="QPushButton" name="mLogClear">
               <property name="minimumSize">
                <size>

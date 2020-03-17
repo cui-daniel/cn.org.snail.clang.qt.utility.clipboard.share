@@ -22,7 +22,7 @@ class MainWindow : public QMainWindow
 public:
     explicit MainWindow(QWidget *parent = nullptr);
     ~MainWindow();
-
+    void setup();
 private:
     uint mUpdateTime;
     Ui::MainWindow *ui;

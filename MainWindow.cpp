@@ -228,6 +228,7 @@ void MainWindow::onClipboardDataChanged() {
         QPixmap image = qvariant_cast<QPixmap>(data->imageData());
         QByteArray array;
         QBuffer    buffer(&array);
+        log(QString("image size: %1x%1").arg(image.width()).arg(image.height()));
         buffer.open(QIODevice::WriteOnly);
         image.save(&buffer, "jpg", 100);
         bytes.append('i');
@@ -277,9 +278,7 @@ void MainWindow::onSocketAcceptConnection() {
             QPixmap pixmap;
             bytes.remove(0, 1);
             pixmap.loadFromData(bytes, "jpg");
-            log(QString("image size: %1x%1")
-                .arg(pixmap.width())
-                .arg(pixmap.height()));
+            log(QString("image size: %1x%1").arg(pixmap.width()).arg(pixmap.height()));
             ui->mClipboardImage->setPixmap(pixmap);
             ui->mClipboardImage->resize(pixmap.size());
             ui->mScrollArea->widget()->resize(pixmap.size());

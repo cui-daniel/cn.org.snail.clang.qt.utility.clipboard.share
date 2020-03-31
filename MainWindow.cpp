@@ -21,8 +21,10 @@ int MainWindow::write(QTcpSocket *socket, QByteArray *bytes) {
     size[3] = CHAR((length >> 0) & 0xff);
     socket->write(size, 4);
     char str[1024];
+    QString checksum=QCryptographicHash::hash(*bytes,QCryptographicHash::Md5).toHex();
     sprintf(str, "write size: %d %02x %02x %02x %02x", length, CTI(size[0]), CTI(size[1]), CTI(size[2]), CTI(size[3]));
     log(QString(str));
+    log(QString("checksum: %1").arg(checksum));
 
     while (length > 0) {
         if (socket->state() != QTcpSocket::ConnectedState) {
@@ -123,6 +125,8 @@ int MainWindow::read(QTcpSocket *socket, QByteArray *bytes) {
         }
     }
     log(QString("socket read success"));
+    QString checksum=QCryptographicHash::hash(*bytes,QCryptographicHash::Md5).toHex();
+    log(QString("checksum: %1").arg(checksum));
     return bytes->size();
 }
 
@@ -228,9 +232,12 @@ void MainWindow::onClipboardDataChanged() {
         QPixmap image = qvariant_cast<QPixmap>(data->imageData());
         QByteArray array;
         QBuffer    buffer(&array);
-        log(QString("image size: %1x%1").arg(image.width()).arg(image.height()));
+        log(QString("image size: %1x%2").arg(image.width()).arg(image.height()));
         buffer.open(QIODevice::WriteOnly);
-        image.save(&buffer, "jpg", 100);
+        if(!image.save(&buffer, "jpg", 100)){
+            log(QString("serialize image failure"));
+            return;
+        }
         bytes.append('i');
         bytes.append(array);
         ui->mClipboardImage->setPixmap(image);
@@ -278,7 +285,7 @@ void MainWindow::onSocketAcceptConnection() {
             QPixmap pixmap;
             bytes.remove(0, 1);
             pixmap.loadFromData(bytes, "jpg");
-            log(QString("image size: %1x%1").arg(pixmap.width()).arg(pixmap.height()));
+            log(QString("image size: %1x%2").arg(pixmap.width()).arg(pixmap.height()));
             ui->mClipboardImage->setPixmap(pixmap);
             ui->mClipboardImage->resize(pixmap.size());
             ui->mScrollArea->widget()->resize(pixmap.size());
